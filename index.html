@@ -656,12 +656,24 @@ function kurve(kosten, eigen, monat){
 }
 
 // Spar-Satz in eine Zeile einpassen (höchstens 28 px, am Handy unter 14 px lieber umbrechen)
+// Misst die Textbreite an einer unsichtbaren Kopie außerhalb der Seite.
+// So ändert sich beim Messen nichts an der sichtbaren Seite und der Bildschirm springt nicht.
+function textBreite(el, px){
+  const cs = getComputedStyle(el), m = document.createElement("span");
+  m.style.cssText = `position:absolute;left:-9999px;top:0;visibility:hidden;white-space:nowrap;` +
+    `font-family:${cs.fontFamily};font-weight:${cs.fontWeight};letter-spacing:${cs.letterSpacing};font-size:${px}px`;
+  m.innerHTML = el.innerHTML;
+  document.body.append(m);
+  const b = m.getBoundingClientRect().width;
+  m.remove();
+  return b || 1;
+}
 function zeileEinpassen(el, max, min, ersatz){
   if (!el) return;
-  el.classList.remove("umbruch"); el.style.fontSize = max + "px";
   const verfuegbar = el.parentElement.clientWidth - parseFloat(getComputedStyle(el.parentElement).paddingLeft) * 2;
-  el.style.display = "inline-block"; const breite = el.offsetWidth; el.style.display = "";
-  const groesse = Math.min(max, max * verfuegbar / breite * 0.98);
+  let groesse = max;
+  for (let i = 0; i < 3; i++) groesse = Math.min(max, groesse * verfuegbar / textBreite(el, groesse) * 0.98);
+  el.classList.remove("umbruch");
   if (groesse < min) { el.classList.add("umbruch"); el.style.fontSize = ersatz + "px"; }
   else el.style.fontSize = groesse + "px";
 }
@@ -669,7 +681,6 @@ function sparZeileEinpassen(){
   zeileEinpassen(document.querySelector("#kurveSatz .spar"), 28, 14, 18);
   zeileEinpassen(document.querySelector("#kurveSatz .auch"), 19, 12, 15);
 }
-addEventListener("resize", sparZeileEinpassen);
 
 function vorteile(gespart, zuschuss, eigen, mon, foerderbar){
   const tage = Math.round(gespart * WOCHEN / 8);
@@ -742,19 +753,23 @@ function titelEinpassen(){
   const h = $("titel"), haupt = $("tHaupt"), prog = $("tProg");
   const breite = h.parentElement.clientWidth;
   // Zwei Zeilen: Hauptsatz oben, Programmname darunter, jede Zeile auf die volle Breite eingepasst
-  h.style.fontSize = "100px"; haupt.style.fontSize = "100px"; prog.style.fontSize = "100px";
   h.classList.add("umbruch");
-  [haupt, prog].forEach(el => {
-    for (let i = 0; i < 3; i++) {
-      const b = el.getBoundingClientRect().width;
-      el.style.fontSize = parseFloat(el.style.fontSize) * breite / b * 0.995 + "px";
-    }
-  });
-  h.style.fontSize = haupt.style.fontSize;
+  // mehrmals nachmessen: die Schrift ändert ihre Form mit der Größe, die Breite wächst nicht genau mit
+  const passend = el => { let g = 100; for (let i = 0; i < 4; i++) g = g * breite / textBreite(el, g) * 0.995; return g; };
+  const gh = passend(haupt), gp = passend(prog);
+  h.style.fontSize = haupt.style.fontSize = gh + "px";
+  prog.style.fontSize = gp + "px";
 }
 titelEinpassen();
-document.fonts && document.fonts.ready.then(titelEinpassen);
-addEventListener("resize", titelEinpassen);
+document.fonts && document.fonts.ready.then(() => { titelEinpassen(); sparZeileEinpassen(); });
+// Am Handy feuert „resize“ auch, wenn beim Scrollen die Adressleiste ein- und ausfährt.
+// Neu einpassen nur, wenn sich wirklich die Breite ändert, sonst springt die Seite.
+let letzteBreite = innerWidth;
+addEventListener("resize", () => {
+  if (innerWidth === letzteBreite) return;
+  letzteBreite = innerWidth;
+  titelEinpassen(); sparZeileEinpassen();
+});
 
 // ---------- Bearbeiten: Texte, Einzug, Ausrichtung und Reihenfolge der Boxen liegen in inhalt.json ----------
 const STANDARD_TEILE = ["eckdaten", "kosten", "aufstellung", "ergebnis", "verlauf", "vorteile", "kontakt"];
