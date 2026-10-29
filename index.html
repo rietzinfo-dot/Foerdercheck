@@ -190,6 +190,7 @@ select{text-overflow:ellipsis}
 .satz .auch{white-space:nowrap}
 .karte>*,.verlauf>*{min-width:0}
 .satz{overflow:hidden}
+.satz .amort{display:block;margin-top:14px;font-size:16px;font-weight:600}
 .satz .auch{display:block;margin-top:18px;padding-top:16px;border-top:1px solid rgba(16,48,47,.25);font-size:15px}
 @media (max-width:600px){.satz{padding:18px 16px}}
 .echt{background:var(--gold);color:var(--tinte);border-radius:10px;padding:12px 14px;display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:4px 12px}
@@ -401,7 +402,7 @@ footer{margin-top:44px;border-top:1px solid var(--linie);background:var(--karte)
         </div>
 
         <div class="verlauf teil" data-teil="verlauf">
-          <h4 data-t="verlaufTitel">Entwicklung deines Kontos über 3 Jahre</h4>
+          <h4><span data-t="verlaufTitel">Entwicklung deines Kontos</span> <span id="kurveJahre">über 3 Jahre</span></h4>
           <div class="kurven-legende"><span data-t="kurveMit">mit Förderung</span><span class="ohne" data-t="kurveOhne">ohne Förderung</span></div>
           <div class="kurve-box"><svg id="kurve" viewBox="0 0 400 210" role="img" aria-label="Verlauf mit und ohne Förderung"></svg></div>
           <p class="satz" id="kurveSatz"></p>
@@ -623,14 +624,20 @@ function rechnen(){
 }
 
 function kurve(kosten, eigen, monat){
-  const W = 400, H = 210, L = 50, R = 24, T = 14, B = 28, M = 36;
+  const W = 400, H = 210, L = 50, R = 24, T = 14, B = 28;
   const ohne = m => -kosten + monat * m, mit = m => -eigen + monat * m;
+  // Zeitraum: mindestens 3 Jahre, länger, bis auch ohne Förderung alles bezahlt ist (höchstens 5 Jahre)
+  const beOhne = monat > 0 ? kosten / monat : Infinity, beMit = monat > 0 ? eigen / monat : Infinity;
+  const M = isFinite(beOhne) ? Math.min(60, Math.max(36, Math.ceil(beOhne / 12) * 12 + 12)) : 36;
+  const jahre = M / 12;
+  $("kurveJahre").textContent = `über ${jahre} Jahre`;
+  const monate = n => `${Math.ceil(n)} ${Math.ceil(n) === 1 ? "Monat" : "Monaten"}`;
   const lo = Math.min(-kosten, 0), hi = Math.max(mit(M), 1000);
   const x = m => L + m / M * (W - L - R), y = v => T + (hi - v) / (hi - lo) * (H - T - B);
   const pfad = f => Array.from({length: M + 1}, (_, m) => `${m ? "L" : "M"}${x(m).toFixed(1)},${y(f(m)).toFixed(1)}`).join(" ");
   const kurz = v => (Math.abs(v) >= 1000 ? Math.round(v / 1000) + " Tsd." : Math.round(v)) + " €";
   let s = "";
-  [0, 12, 24, 36].forEach(m => s += `<line x1="${x(m)}" x2="${x(m)}" y1="${T}" y2="${H-B}" stroke="#d6e0de"/><text x="${x(m)}" y="${H-9}" text-anchor="middle" font-size="11" fill="#4a615f">${m ? m/12 + ". Jahr" : "Start"}</text>`);
+  Array.from({length: jahre + 1}, (_, j) => j * 12).forEach(m => s += `<line x1="${x(m)}" x2="${x(m)}" y1="${T}" y2="${H-B}" stroke="#d6e0de"/><text x="${x(m)}" y="${H-9}" text-anchor="middle" font-size="11" fill="#4a615f">${m ? m/12 + ". Jahr" : "Start"}</text>`);
   s += `<line x1="${L}" x2="${W-R}" y1="${y(0)}" y2="${y(0)}" stroke="#10302f" stroke-width="1"/>`;
   [lo, hi].forEach(v => s += `<text x="${L-6}" y="${y(v)+4}" text-anchor="end" font-size="11" fill="#4a615f">${kurz(v)}</text>`);
   s += `<text x="${L-6}" y="${y(0)+4}" text-anchor="end" font-size="11" fill="#10302f">0 €</text>`;
@@ -639,20 +646,22 @@ function kurve(kosten, eigen, monat){
   s += `<path d="${pfad(mit)}" fill="none" stroke="#0f6b67" stroke-width="3"/>`;
   const be = monat > 0 ? eigen / monat : Infinity;
   if (be <= M) s += `<circle cx="${x(be)}" cy="${y(0)}" r="6" fill="#f2b705" stroke="#10302f" stroke-width="1.5"><title>Eigenanteil bezahlt nach ${Math.ceil(be)} Monaten</title></circle>`;
-  [12, 24, 36].forEach(m => {
+  Array.from({length: jahre}, (_, j) => (j + 1) * 12).forEach(m => {
     s += `<circle cx="${x(m)}" cy="${y(ohne(m))}" r="4" fill="#9aaba9"><title>${m/12}. Jahr ohne Förderung: ${euro(ohne(m))}</title></circle>`;
     s += `<circle cx="${x(m)}" cy="${y(mit(m))}" r="5" fill="#0f6b67"><title>${m/12}. Jahr mit Förderung: ${euro(mit(m))}</title></circle>`;
   });
   $("kurve").innerHTML = s;
   requestAnimationFrame(sparZeileEinpassen);
   const plus = mit(M), vz = v => (v >= 0 ? "+" : "") + euro(v);
-  $("kurveSatz").innerHTML = plus > 0
-    ? `Nach 3 Jahren liegst du mit Förderung bei <b class="zahl">${vz(plus)}</b>, ohne Förderung bei <b class="zahl">${vz(ohne(M))}</b>.` +
-      `<span class="spar">Du sparst also mit dem Einsatz von KI-Tools ca. ${euro(plus)} an Kosten.</span>` +
-      (ohne(M) > 0
-        ? `<span class="auch">Auch ohne Förderung bleibt dir eine echte Kostenersparnis von <b class="zahl">${euro(ohne(M))}</b>. </span>`
-        : `<span class="auch">Ohne Förderung hätten sich die KI-Tools nach etwa <b>${Math.ceil(kosten / monat)} Monaten</b> bezahlt gemacht, danach ist jeder Monat echte Ersparnis.</span>`)
-    : `Mit diesen Werten rechnet sich das Projekt in 3 Jahren noch nicht. Mehr Aufgaben oder kleinere Projektkosten ändern das.`;
+  if (!(monat > 0)) { $("kurveSatz").innerHTML = `Wähle Aufgaben aus, damit die Ersparnis berechnet werden kann.`; return; }
+  const amort = `<span class="amort">Deine Ausgaben sind amortisiert: mit Förderung nach etwa <b>${monate(beMit)}</b>, ohne Förderung nach etwa <b>${monate(beOhne)}</b>.</span>`;
+  $("kurveSatz").innerHTML =
+    `Nach ${jahre} Jahren liegst du mit Förderung bei <b class="zahl">${vz(plus)}</b>, ohne Förderung bei <b class="zahl">${vz(ohne(M))}</b>.` +
+    (plus > 0
+      ? `<span class="spar">Du sparst also mit dem Einsatz von KI-Tools ca. ${euro(plus)} an Kosten.</span>`
+      : `<span class="spar">Deine Ausgaben sind nach etwa ${monate(beMit)} amortisiert.</span>`) +
+    amort +
+    (ohne(M) > 0 ? `<span class="auch">Auch ohne Förderung bleibt dir eine echte Kostenersparnis von <b class="zahl">${euro(ohne(M))}</b>.</span>` : "");
 }
 
 // Spar-Satz in eine Zeile einpassen (höchstens 28 px, am Handy unter 14 px lieber umbrechen)
